@@ -1,0 +1,17 @@
+# 构建产物
+build/
+*.o
+*.so
+*.deb
+
+# Qt
+*.user
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
