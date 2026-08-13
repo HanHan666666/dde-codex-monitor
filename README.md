@@ -10,10 +10,14 @@
 > 通过 Codex App Server 的 stdio 模式（`codex app-server --listen stdio://`）读取额度，
 > 复用现有登录状态，不读取 `~/.codex/auth.json`，不抓取网页，不调用私有 HTTP 接口。
 
+![快捷面板全图](docs/screenshots/quick-panel-full.png)
+
+*亮暗主题卡片效果：*
+
 ![快捷面板 - 亮色](docs/screenshots/quick-panel-light.png)
 ![快捷面板 - 暗色](docs/screenshots/quick-panel-dark.png)
 
-*真实运行效果（deepin 25）：*
+*真实运行效果（deepin 25 任务栏）：*
 
 ![真实快捷面板](docs/screenshots/live-quick-panel.png)
 ![真实托盘图标](docs/screenshots/live-tray-icon.png)
@@ -57,9 +61,10 @@ sudo dpkg -i dde-codex-monitor.deb
 systemctl --user restart dde-shell@DDE.service
 ```
 
-> 构建无需系统级 DDE 头文件：CI 与本地构建均从
-> [dde-tray-loader](https://github.com/linuxdeepin/dde-tray-loader) 拉取接口头文件，
-> 通过 `-DDDE_TRAY_LOADER_INCLUDE_OVERRIDE=<头文件目录>` 指定（见 .github/workflows/build.yml）。
+> 没有安装 `dde-tray-loader-dev` 时，可从
+> [dde-tray-loader](https://github.com/linuxdeepin/dde-tray-loader) 仓库的
+> `interfaces/` 目录拉取接口头文件，通过 `-DDDE_TRAY_LOADER_INCLUDE_OVERRIDE=<头文件目录>`
+> 指定即可编译（也可直接让 AI 助手完成这一步）。
 
 ## 📌 注册到快捷面板
 
