@@ -6,11 +6,18 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
-find_package(DdeTrayLoader CONFIG REQUIRED)
 
-# DdeTrayLoaderConfig.cmake 把头文件路径写死为 /usr/include/dde-dock，
-# 使用本地解包 dev 包构建时用该变量覆盖
+# dde-tray-loader-dev 提供的 DdeTrayLoaderConfig.cmake 把头文件路径写死为
+# /usr/include/dde-dock。两种构建方式二选一：
+#  1) 系统已安装 dde-tray-loader-dev：直接 find_package
+#  2) 没有开发包（如 CI）：设置 -DDDE_TRAY_LOADER_INCLUDE_OVERRIDE=<dde-dock 头文件目录>
+find_package(DdeTrayLoader CONFIG QUIET)
 set(DDE_TRAY_LOADER_INCLUDE_OVERRIDE "" CACHE PATH "Override DdeTrayLoader include dir")
+
+if(NOT DdeTrayLoader_FOUND AND NOT DDE_TRAY_LOADER_INCLUDE_OVERRIDE)
+    message(FATAL_ERROR "DdeTrayLoader not found. Install dde-tray-loader-dev or pass "
+                        "-DDDE_TRAY_LOADER_INCLUDE_OVERRIDE=<dir> with the dde-dock headers.")
+endif()
 
 add_library(dde-codex-monitor SHARED
     src/codexmonitorplugin.cpp
