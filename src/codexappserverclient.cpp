@@ -5,6 +5,7 @@
 
 #include <QStandardPaths>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QProcessEnvironment>
 #include <QJsonDocument>
@@ -26,6 +27,8 @@ static const int kNoCliRetryMs = 60 * 1000;      // 未找到 CLI 时每分钟�
 CodexAppServerClient::CodexAppServerClient(QObject *parent)
     : QObject(parent)
 {
+    m_history.load();
+
     m_process.setProcessChannelMode(QProcess::SeparateChannels);
     // 只解析 stdout；stderr 不是 JSONL，仅用于有限的错误日志
 
@@ -378,7 +381,33 @@ void CodexAppServerClient::parseRateLimitObject(const QJsonObject &result)
         return;
     }
 
+    // 采样 -> 趋势与消耗速度估算
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (quota.primary.valid) {
+        m_history.record(quota.primary.durationMinutes, now, quota.primary.usedPercent);
+        quota.primary.burnPerHour = m_history.burnRatePerHour(quota.primary.durationMinutes, now);
+        quota.primary.estimatedMinutesLeft = m_history.estimateMinutesLeft(
+                quota.primary.durationMinutes, quota.primary.usedPercent,
+                quota.primary.resetsAt, now);
+        quota.primary.lastSampleAt = now;
+    }
+    if (quota.secondary.valid) {
+        m_history.record(quota.secondary.durationMinutes, now, quota.secondary.usedPercent);
+        quota.secondary.burnPerHour = m_history.burnRatePerHour(quota.secondary.durationMinutes, now);
+        quota.secondary.estimatedMinutesLeft = m_history.estimateMinutesLeft(
+                quota.secondary.durationMinutes, quota.secondary.usedPercent,
+                quota.secondary.resetsAt, now);
+        quota.secondary.lastSampleAt = now;
+    }
+    m_history.save();
+
+    publishQuota(quota);
+}
+
+void CodexAppServerClient::publishQuota(const QuotaState &quota)
+{
     m_quota = quota;
+    m_quota.codexActive = m_codexActive;
     setState(CodexClientState::Ready);
     emit quotaUpdated(m_quota);
 }
@@ -432,11 +461,60 @@ void CodexAppServerClient::onPeriodicRefresh()
 
 void CodexAppServerClient::onCountdownTick()
 {
-    // 倒计时由 UI 本地更新，这里只在周期结束后触发一次读取
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     const bool expired = (m_quota.primary.valid && m_quota.primary.resetsAt > 0 && now >= m_quota.primary.resetsAt)
                       || (m_quota.secondary.valid && m_quota.secondary.resetsAt > 0 && now >= m_quota.secondary.resetsAt);
     if (expired) {
         refresh();
+        return;
     }
+    // 每分钟扫描一次本机会话并广播快照：倒计时本地走字、消耗预测实时外推都靠这次心跳
+    m_codexActive = scanCodexSessions();
+    if (m_quota.primary.valid || m_quota.secondary.valid) {
+        m_quota.codexActive = m_codexActive;
+        emit quotaUpdated(m_quota);
+    }
+}
+
+bool CodexAppServerClient::scanCodexSessions() const
+{
+    // 判定"正在使用"：存在交互式 Codex 会话进程（TUI / codex exec / IDE 插件会话）。
+    // 排除：本插件自己的 app-server 子进程、桌面版内置进程、以及空闲的
+    // app-server 守护（它们常驻但不代表在消耗额度）。
+    const QDir procDir(QStringLiteral("/proc"));
+    const QFileInfoList entries = procDir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+    const qint64 ownPid = m_process.processId();
+    for (const QFileInfo &entry : entries) {
+        bool ok = false;
+        const qint64 pid = QString(entry.fileName()).toLongLong(&ok);
+        if (!ok || pid <= 0 || pid == ownPid) {
+            continue;
+        }
+        QFile cmdlineFile(entry.absoluteFilePath() + QStringLiteral("/cmdline"));
+        if (!cmdlineFile.open(QIODevice::ReadOnly)) {
+            continue;
+        }
+        QStringList args;
+        const QList<QByteArray> rawArgs = cmdlineFile.readAll().split('\0');
+        for (const QByteArray &raw : rawArgs) {
+            if (!raw.isEmpty()) {
+                args.append(QString::fromUtf8(raw));
+            }
+        }
+        if (args.isEmpty()) {
+            continue;
+        }
+        const QString cmd = args.join(QLatin1Char(' '));
+        if (cmd.contains(QStringLiteral("app-server"))
+            || cmd.contains(QStringLiteral("/usr/lib/chatgpt/"))) {
+            continue; // app-server 守护与桌面版内置进程不算"正在使用"
+        }
+        for (const QString &arg : args) {
+            const QString base = arg.section(QLatin1Char('/'), -1);
+            if (base == QStringLiteral("codex")) {
+                return true; // codex TUI / codex exec / 其它子命令
+            }
+        }
+    }
+    return false;
 }

@@ -195,6 +195,16 @@ bool launch(QString *error)
         return false;
     }
 
+    // DDE 最佳实践：优先经 dde-am 启动，正确处理 Wayland xdg-activation
+    // 令牌与应用单实例聚焦；appId 为 desktop 文件名（去掉 .desktop）
+    const QString appId = QFileInfo(entry).completeBaseName();
+    if (!QStandardPaths::findExecutable(QStringLiteral("dde-am")).isEmpty()) {
+        if (QProcess::startDetached(QStringLiteral("dde-am"), QStringList{appId})) {
+            return true;
+        }
+    }
+
+    // 回退：直接解析 Exec 启动（dde-am 不可用或启动失败）
     QString exec;
     QString workDir;
     if (!readDesktopEntry(entry, &exec, &workDir)) {

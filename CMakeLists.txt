@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.16)
-project(dde-codex-monitor VERSION 0.2.1 LANGUAGES CXX)
+project(dde-codex-monitor VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets DBus)
 
 # dde-tray-loader-dev 提供的 DdeTrayLoaderConfig.cmake 把头文件路径写死为
 # /usr/include/dde-dock。两种构建方式二选一：
@@ -26,6 +26,10 @@ add_library(dde-codex-monitor SHARED
     src/codexappserverclient.h
     src/codexdesktoplauncher.cpp
     src/codexdesktoplauncher.h
+    src/codexhistory.cpp
+    src/codexhistory.h
+    src/codexnotifier.cpp
+    src/codexnotifier.h
     src/quotawidgets.cpp
     src/quotawidgets.h
     src/codex-monitor.json
@@ -40,6 +44,7 @@ target_link_libraries(dde-codex-monitor PRIVATE
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
+    Qt6::DBus
 )
 
 install(TARGETS dde-codex-monitor

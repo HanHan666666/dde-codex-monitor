@@ -10,6 +10,8 @@
 #include <QByteArray>
 #include <QJsonObject>
 
+#include "codexhistory.h"
+
 /**
  * @brief 当前额度数据的客户端状态
  */
@@ -30,6 +32,10 @@ struct QuotaWindow {
     double usedPercent = 0;  // 已用百分比，0-100
     int durationMinutes = 0; // 额度周期（分钟）
     qint64 resetsAt = 0;     // 恢复时间（Unix 秒级时间戳）
+    // 按最近消耗速度估算的"距耗尽分钟数"，<0 表示样本不足无法估算
+    qint64 estimatedMinutesLeft = -1;
+    double burnPerHour = 0;  // 最近消耗速度（%/小时），0 表示未知
+    qint64 lastSampleAt = 0; // 该窗口最近一次采样时间（Unix 秒）
 };
 
 /**
@@ -39,6 +45,7 @@ struct QuotaState {
     QString planType;        // 套餐类型，如 "Plus"
     QuotaWindow primary;
     QuotaWindow secondary;
+    bool codexActive = false; // 本机检测到正在运行的 Codex 会话
 };
 
 /**
@@ -61,6 +68,7 @@ public:
 
     CodexClientState state() const { return m_state; }
     QuotaState quota() const { return m_quota; }
+    const QuotaHistory &history() const { return m_history; }
 
 signals:
     void stateChanged(CodexClientState state, const QString &message);
@@ -88,6 +96,8 @@ private:
     void setState(CodexClientState state, const QString &message = QString());
     void scheduleRestart(int delayMs);
     void handleProcessFailure(const QString &reason);
+    bool scanCodexSessions() const; // 扫描本机正在运行的 Codex 会话进程
+    void publishQuota(const QuotaState &quota);
 
     QProcess m_process;
     QByteArray m_buffer;          // stdout 未完成行缓冲
@@ -98,8 +108,10 @@ private:
     QString m_codexPath;
     bool m_requestInFlight = false;
     bool m_stopping = false;
+    bool m_codexActive = false;   // 本机是否有正在运行的 Codex 会话
     CodexClientState m_state = CodexClientState::Starting;
     QuotaState m_quota;
+    QuotaHistory m_history; // 采样历史，用于趋势图与消耗速度估算
 };
 
 #endif // CODEXAPPSERVERCLIENT_H
