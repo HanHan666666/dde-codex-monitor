@@ -548,3 +548,18 @@ systemctl --user restart dde-shell@DDE.service
 ```
 
 该操作会短暂重启桌面 Shell，应由用户自行执行。
+
+### 10.14 复制额度信息与 X11 剪贴板
+
+右键菜单“复制额度信息”把当前额度摘要写入系统剪贴板。注意：托盘插件进程运行在
+dde-shell 内嵌的 Wayland 合成器上（QPA 为 `libqwayland-generic`），该合成器不实现
+`wl_data_device`，因此插件进程里 `QClipboard::setText()` 是静默空操作。
+
+`CodexClipboard` 用一条独立的 XCB 连接直接成为 X11 CLIPBOARD selection 属主，
+并在插件存活期间通过 `QSocketNotifier` 持续服务粘贴方的 `SelectionRequest`
+（支持 `TARGETS` / `UTF8_STRING` / `STRING` / `TEXT` / `text/plain` /
+`TIMESTAMP`）。`DISPLAY` 优先读环境变量，读不到回退 deepin 固定的 `:0`；
+插件进程环境变量被 dde-shell 清理，连 X 前需补上 `HOME`/`XAUTHORITY`，
+否则 Xau 拿不到认证 cookie。deepin 的剪贴板守护与 Xwayland 桥都基于 X11
+selection，此通道在 X11 会话与 treeland Wayland 会话下均可用。XCB 连接失败时
+退回 `QClipboard::setText()` 兜底；复制成功后悬停提示短暂显示“已复制到剪贴板”。

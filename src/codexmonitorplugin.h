@@ -14,6 +14,7 @@
 
 class QLabel;
 class CodexAppServerClient;
+class CodexClipboard;
 class CodexNotifier;
 class QuotaIconWidget;
 class QuotaPanelWidget;
@@ -70,6 +71,7 @@ private:
     QScopedPointer<QuotaIconWidget> m_iconWidget;
     QScopedPointer<QuotaPanelWidget> m_panelWidget;
     QScopedPointer<QuotaDetailWidget> m_detailWidget;
+    QScopedPointer<CodexClipboard> m_clipboard;
     QScopedPointer<CodexNotifier> m_notifier;
     QScopedPointer<CodexAppServerClient> m_client;
     QLabel *m_tipsLabel = nullptr; // 由框架展示的悬停提示

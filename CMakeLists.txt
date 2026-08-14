@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets DBus)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(XCB REQUIRED IMPORTED_TARGET xcb)
 
 # dde-tray-loader-dev 提供的 DdeTrayLoaderConfig.cmake 把头文件路径写死为
 # /usr/include/dde-dock。两种构建方式二选一：
@@ -24,6 +26,8 @@ add_library(dde-codex-monitor SHARED
     src/codexmonitorplugin.h
     src/codexappserverclient.cpp
     src/codexappserverclient.h
+    src/codexclipboard.cpp
+    src/codexclipboard.h
     src/codexdesktoplauncher.cpp
     src/codexdesktoplauncher.h
     src/codexhistory.cpp
@@ -45,6 +49,7 @@ target_link_libraries(dde-codex-monitor PRIVATE
     Qt6::Gui
     Qt6::Widgets
     Qt6::DBus
+    PkgConfig::XCB
 )
 
 install(TARGETS dde-codex-monitor

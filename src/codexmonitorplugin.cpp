@@ -4,6 +4,7 @@
 #include "codexmonitorplugin.h"
 
 #include "codexappserverclient.h"
+#include "codexclipboard.h"
 #include "codexdesktoplauncher.h"
 #include "codexnotifier.h"
 #include "quotawidgets.h"
@@ -44,6 +45,7 @@ void CodexMonitorPlugin::init(PluginProxyInterface *proxyInter)
     m_proxyInter = proxyInter; // 由 Loader 管理，不负责释放
 
     m_client.reset(new CodexAppServerClient(this));
+    m_clipboard.reset(new CodexClipboard(this));
     m_notifier.reset(new CodexNotifier(this));
     m_notifier->setEnabled(m_proxyInter->getValue(this, QStringLiteral("notifyEnabled"), true).toBool());
     m_iconWidget.reset(new QuotaIconWidget);
@@ -390,7 +392,15 @@ void CodexMonitorPlugin::invokedMenuItem(const QString &itemKey,
     } else if (menuId == QStringLiteral("open")) {
         openCodexDesktop();
     } else if (menuId == QStringLiteral("copy")) {
-        QApplication::clipboard()->setText(shareText());
+        const QString text = shareText();
+        // 插件进程的 Wayland 连接没有 wl_data_device，QClipboard 写不出去，
+        // 优先走 XCB 直写 X11 CLIPBOARD；连不上 X 时退回 QClipboard 兜底
+        if (!m_clipboard || !m_clipboard->setText(text)) {
+            QApplication::clipboard()->setText(text);
+        }
+        m_tipNote = QStringLiteral("已复制到剪贴板");
+        updateTipsText();
+        m_tipNoteTimer.start();
     } else if (menuId == QStringLiteral("notify")) {
         setNotifyEnabled(checked);
     }
