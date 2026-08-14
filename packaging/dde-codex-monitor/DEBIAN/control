@@ -1,0 +1,9 @@
+Package: dde-codex-monitor
+Version: 0.2.2
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: dde-tray-loader (>= 2.0.0)
+Maintainer: DDE Codex Monitor developers
+Description: DDE dock quick panel plugin for Codex quota monitoring
+ Quick panel plugin showing the current user's Codex subscription quota.

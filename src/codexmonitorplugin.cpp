@@ -4,6 +4,7 @@
 #include "codexmonitorplugin.h"
 
 #include "codexappserverclient.h"
+#include "codexdesktoplauncher.h"
 #include "quotawidgets.h"
 
 #include <QLabel>
@@ -66,6 +67,16 @@ void CodexMonitorPlugin::init(PluginProxyInterface *proxyInter)
             m_client.data(), &CodexAppServerClient::refreshManually);
     connect(m_iconWidget.data(), &QuotaIconWidget::refreshRequested,
             m_client.data(), &CodexAppServerClient::refreshManually);
+    // 双击托盘图标：打开 Codex 桌面版
+    connect(m_iconWidget.data(), &QuotaIconWidget::launchRequested,
+            this, &CodexMonitorPlugin::openCodexDesktop);
+
+    m_tipNoteTimer.setSingleShot(true);
+    m_tipNoteTimer.setInterval(5 * 1000);
+    connect(&m_tipNoteTimer, &QTimer::timeout, this, [this]() {
+        m_tipNote.clear();
+        updateTipsText();
+    });
 
     m_proxyInter->itemAdded(this, QStringLiteral("codex-monitor"));
     m_client->start();
@@ -87,6 +98,9 @@ QString CodexMonitorPlugin::tipsText() const
     if (!m_client) {
         return QString();
     }
+    if (!m_tipNote.isEmpty()) {
+        return m_tipNote;
+    }
     const QuotaState &quota = m_client->quota();
     switch (m_client->state()) {
     case CodexClientState::Ready: {
@@ -104,7 +118,11 @@ QString CodexMonitorPlugin::tipsText() const
                                          : QStringLiteral("%1 已用 %2%").arg(duration, QString::number(qRound(quota.secondary.usedPercent))))
                   << formatRelativeReset(quota.secondary.resetsAt);
         }
-        return parts.isEmpty() ? pluginDisplayName() : parts.join(QStringLiteral(" · "));
+        if (parts.isEmpty()) {
+            parts << pluginDisplayName();
+        }
+        parts << QStringLiteral("单击刷新 · 双击打开桌面版");
+        return parts.join(QStringLiteral(" · "));
     }
     case CodexClientState::NoCli:
         return QStringLiteral("Codex 额度：未找到 Codex CLI");
@@ -113,7 +131,7 @@ QString CodexMonitorPlugin::tipsText() const
     case CodexClientState::NoQuota:
         return QStringLiteral("Codex 额度：当前账号没有可用额度");
     case CodexClientState::Failed:
-        return QStringLiteral("Codex 额度：读取失败，点击重试");
+        return QStringLiteral("Codex 额度：读取失败，单击重试");
     case CodexClientState::Starting:
     default:
         return QStringLiteral("Codex 额度：正在读取");
@@ -133,6 +151,18 @@ QWidget *CodexMonitorPlugin::itemTipsWidget(const QString &itemKey)
         return m_tipsLabel;
     }
     return nullptr;
+}
+
+void CodexMonitorPlugin::openCodexDesktop()
+{
+    QString error;
+    if (CodexDesktop::launch(&error)) {
+        return;
+    }
+    qWarning() << "[dde-codex-monitor] 打开 Codex 桌面版失败:" << error;
+    m_tipNote = error;
+    updateTipsText();
+    m_tipNoteTimer.start();
 }
 
 Dock::PluginFlags CodexMonitorPlugin::flags() const

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(dde-codex-monitor VERSION 0.1.0 LANGUAGES CXX)
+project(dde-codex-monitor VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -24,6 +24,8 @@ add_library(dde-codex-monitor SHARED
     src/codexmonitorplugin.h
     src/codexappserverclient.cpp
     src/codexappserverclient.h
+    src/codexdesktoplauncher.cpp
+    src/codexdesktoplauncher.h
     src/quotawidgets.cpp
     src/quotawidgets.h
     src/codex-monitor.json

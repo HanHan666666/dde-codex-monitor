@@ -4,6 +4,7 @@
 #include "quotawidgets.h"
 
 #include <QPainter>
+#include <QApplication>
 #include <QFontMetrics>
 #include <QDateTime>
 #include <QMouseEvent>
@@ -129,6 +130,10 @@ void drawQuotaStatusIcon(QPainter &painter, const QRectF &rect,
 QuotaIconWidget::QuotaIconWidget(QWidget *parent)
     : QWidget(parent)
 {
+    m_singleClickTimer.setSingleShot(true);
+    m_singleClickTimer.setInterval(QApplication::doubleClickInterval());
+    connect(&m_singleClickTimer, &QTimer::timeout,
+            this, &QuotaIconWidget::refreshRequested);
 }
 
 void QuotaIconWidget::setData(const QuotaState &quota, CodexClientState state)
@@ -148,10 +153,20 @@ void QuotaIconWidget::paintEvent(QPaintEvent *event)
 void QuotaIconWidget::mousePressEvent(QMouseEvent *event)
 {
     if (event->button() == Qt::LeftButton) {
-        // 点击图标：手动刷新额度（同快捷面板卡片）
-        emit refreshRequested();
+        // 等待双击间隔：期间没有第二次点击才算单击刷新
+        m_singleClickTimer.start();
     }
     QWidget::mousePressEvent(event);
+}
+
+void QuotaIconWidget::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton) {
+        m_singleClickTimer.stop();
+        emit launchRequested();
+    }
+    // 默认实现会转发给 mousePressEvent，导致单击定时器被重启，这里直接接收
+    event->accept();
 }
 
 QuotaPanelWidget::QuotaPanelWidget(QWidget *parent)
@@ -177,8 +192,8 @@ QString QuotaPanelWidget::usageText() const
     if (!worst.valid) {
         return QString();
     }
-    // 明确显示"已用"，避免歧义
-    return QStringLiteral("已用 %1%").arg(qRound(worst.usedPercent));
+    // 明确显示"剩余"，避免歧义；数值 = 100 - 已用
+    return QStringLiteral("剩余 %1%").arg(qRound(100.0 - worst.usedPercent));
 }
 
 QStringList QuotaPanelWidget::windowLines() const
@@ -189,9 +204,9 @@ QStringList QuotaPanelWidget::windowLines() const
         if (m_quota.primary.valid) {
             const QString duration = formatWindowDuration(m_quota.primary.durationMinutes);
             if (twoWindows) {
-                lines << QStringLiteral("%1：已用 %2% · %3")
+                lines << QStringLiteral("%1：剩余 %2% · %3")
                              .arg(duration.isEmpty() ? QStringLiteral("窗口") : duration,
-                                  QString::number(qRound(m_quota.primary.usedPercent)),
+                                  QString::number(qRound(100.0 - m_quota.primary.usedPercent)),
                                   formatRelativeReset(m_quota.primary.resetsAt));
             } else {
                 lines << QStringLiteral("%1 · %2")
@@ -201,9 +216,9 @@ QStringList QuotaPanelWidget::windowLines() const
         }
         if (m_quota.secondary.valid) {
             const QString duration = formatWindowDuration(m_quota.secondary.durationMinutes);
-            lines << QStringLiteral("%1：已用 %2% · %3")
+            lines << QStringLiteral("%1：剩余 %2% · %3")
                          .arg(duration.isEmpty() ? QStringLiteral("窗口") : duration,
-                              QString::number(qRound(m_quota.secondary.usedPercent)),
+                              QString::number(qRound(100.0 - m_quota.secondary.usedPercent)),
                               formatRelativeReset(m_quota.secondary.resetsAt));
         }
     } else {
@@ -239,7 +254,7 @@ void QuotaPanelWidget::paintEvent(QPaintEvent *event)
     const qreal textX = left + iconSize + 12;
     const qreal textWidth = width() - textX - right;
 
-    // 标题行：套餐类型 + 右侧已用百分比
+    // 标题行：套餐类型 + 右侧剩余百分比
     QFont titleFont = font();
     titleFont.setBold(true);
     titleFont.setPointSizeF(10.0);

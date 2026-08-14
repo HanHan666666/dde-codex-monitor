@@ -48,6 +48,9 @@ Dock 图标通过颜色或环形进度表达当前额度状态：
 - 额度变化后及时更新界面。
 - 定期刷新额度，刷新频率不需要过高。
 - 用户点击额度卡片时可以手动刷新。
+- 单击 Dock 状态图标同样手动刷新；为区分双击，单击在系统双击间隔后触发。
+- 双击 Dock 状态图标打开 Codex 桌面版（官方 Linux 版 ChatGPT 应用，可选依赖，
+  未安装时悬停图标短暂提示原因，不影响额度监控）。
 - 倒计时在本地更新，不应为更新倒计时频繁请求网络。
 
 ### 3.4 异常状态
@@ -96,12 +99,13 @@ codex app-server --listen stdio://
 
 ```text
 [状态图标]  Codex Plus
-            5 小时：已用 35% · 2 小时后恢复
-            7 天：已用 15% · 6 天后恢复
+            5 小时：剩余 65% · 2 小时后恢复
+            7 天：剩余 85% · 6 天后恢复
 ```
 
 要求：
 
+- 卡片中的百分比显示"剩余"（100 − 已用）；状态图标的圆弧与颜色仍按"已用"比例绘制。
 - 适配系统亮色和暗色主题。
 - 不使用固定背景色破坏系统主题。
 - 信息能够在快捷面板规定尺寸内完整显示。
@@ -162,10 +166,11 @@ codex app-server --listen stdio://
 ```text
 dde-tray-loader
     └── CodexMonitorPlugin
-        ├── QuotaIconWidget       Dock 状态图标
+        ├── QuotaIconWidget       Dock 状态图标（单击刷新 / 双击打开桌面版）
         ├── QuotaPanelWidget      快捷面板额度卡片
-        └── CodexAppServerClient  QProcess + JSONL
-                └── codex app-server --listen stdio://
+        ├── CodexAppServerClient  QProcess + JSONL
+        │       └── codex app-server --listen stdio://
+        └── CodexDesktopLauncher  查找并启动 Codex 桌面版
 ```
 
 整个插件只包含一个动态库和一个由插件管理的 Codex 子进程。
@@ -182,6 +187,8 @@ dde-tray-loader
     ├── codexmonitorplugin.cpp
     ├── codexappserverclient.h
     ├── codexappserverclient.cpp
+    ├── codexdesktoplauncher.h
+    ├── codexdesktoplauncher.cpp
     ├── quotawidgets.h
     └── quotawidgets.cpp
 ```
@@ -275,7 +282,21 @@ env.insert("PATH", codexBinDir + ":" + env.value("PATH"));
 process.setProcessEnvironment(env);
 ```
 
-### 10.5 启动 App Server
+### 10.5 Codex 桌面版启动
+
+双击 Dock 状态图标时，按以下顺序查找桌面入口文件：
+
+1. 环境变量 `DDE_CODEX_MONITOR_DESKTOP_ENTRY` 指定的 desktop 文件（路径或文件名）。
+2. `QStandardPaths` 的 `GenericDataLocation` 下的 `applications/chatgpt.desktop`
+   （覆盖 `~/.local/share/applications` 与 `/usr/share/applications` 等 XDG 目录）。
+3. 同目录下的 `codex.desktop` 作为备选文件名。
+
+找到后解析 `[Desktop Entry]` 段的 `Exec` 与 `Path`：按 desktop entry 规范处理引号与
+`\s` 等转义，丢弃 `%f`/`%U` 等字段代码，裸命令名用 `QStandardPaths::findExecutable`
+解析（另补查 `$HOME/.local/bin`），最后 `QProcess::startDetached` 脱离启动。
+启动失败只通过悬停提示与日志反馈，不允许影响任务栏。
+
+### 10.6 启动 App Server
 
 ```cpp
 process.setProgram(codexPath);
@@ -288,7 +309,7 @@ process.start();
 
 插件销毁时先调用 `terminate()`，短暂等待后仍未退出再调用 `kill()`，避免留下子进程。
 
-### 10.6 JSONL 读取
+### 10.7 JSONL 读取
 
 `readyReadStandardOutput` 得到的数据不保证是一条完整 JSON。客户端需要维护 `QByteArray` 缓冲区：
 
@@ -300,7 +321,7 @@ process.start();
 
 不能假设一次 `readyReadStandardOutput` 就对应一条响应。
 
-### 10.7 App Server 初始化
+### 10.8 App Server 初始化
 
 进程启动成功后发送：
 
@@ -327,7 +348,7 @@ process.start();
 
 每个 JSON 对象必须序列化成单行并追加换行符后写入 stdin。不要在 `initialize` 成功前调用额度接口。
 
-### 10.8 额度读取和更新
+### 10.9 额度读取和更新
 
 使用：
 
@@ -357,7 +378,7 @@ process.start();
 - 请求 10 秒没有响应，进入读取失败状态。
 - 子进程异常退出后等待 30 秒再尝试启动，不能高频循环重启。
 
-### 10.9 数据模型和解析
+### 10.10 数据模型和解析
 
 可以使用简单数据结构：
 
@@ -391,7 +412,7 @@ struct QuotaState {
 
 百分比限制在 0 到 100 范围。缺少字段或字段类型错误的窗口视为无效，不能因此崩溃。
 
-### 10.10 界面实现建议
+### 10.11 界面实现建议
 
 Dock 图标可以直接使用 `QPainter` 绘制，不增加 SVG/DCI 资源：
 
@@ -411,7 +432,7 @@ Dock 图标可以直接使用 `QPainter` 绘制，不增加 SVG/DCI 资源：
 
 `resetsAt` 使用本地时区转换并优先显示相对时间，例如“2 小时 14 分后恢复”。倒计时结束后主动读取一次最新额度。
 
-### 10.11 构建配置
+### 10.12 构建配置
 
 目标系统使用 Qt 6 和 DDE 托盘 V2 API。开发依赖：
 
@@ -437,6 +458,8 @@ add_library(dde-codex-monitor SHARED
     src/codexmonitorplugin.h
     src/codexappserverclient.cpp
     src/codexappserverclient.h
+    src/codexdesktoplauncher.cpp
+    src/codexdesktoplauncher.h
     src/quotawidgets.cpp
     src/quotawidgets.h
     src/codex-monitor.json
@@ -465,7 +488,16 @@ install(TARGETS dde-codex-monitor
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
-sudo cmake --install build --prefix /usr
+```
+
+Deepin 25 的 `/usr` 只读，直接 `cmake --install` 会失败；按 README 的方式打包
+deb 后用 apt 安装：
+
+```bash
+install -D build/libdde-codex-monitor.so \
+  packaging/dde-codex-monitor/usr/lib/dde-dock/plugins/libdde-codex-monitor.so
+dpkg-deb --build --root-owner-group packaging/dde-codex-monitor
+sudo apt install -y packaging/dde-codex-monitor.deb
 ```
 
 预期安装结果：
@@ -474,7 +506,7 @@ sudo cmake --install build --prefix /usr
 /usr/lib/dde-dock/plugins/libdde-codex-monitor.so
 ```
 
-### 10.12 注册快捷面板插件
+### 10.13 注册快捷面板插件
 
 安装动态库后，把 `codex-monitor` 追加到现有 `quickPlugins` 数组。
 

@@ -6,6 +6,7 @@
 
 #include <QObject>
 #include <QScopedPointer>
+#include <QTimer>
 
 #include <pluginsiteminterface_v2.h>
 
@@ -43,12 +44,15 @@ public:
 private:
     QString tipsText() const;
     void updateTipsText();
+    void openCodexDesktop();
 
     QScopedPointer<QuotaIconWidget> m_iconWidget;
     QScopedPointer<QuotaPanelWidget> m_panelWidget;
     QScopedPointer<CodexAppServerClient> m_client;
     QLabel *m_tipsLabel = nullptr; // 由框架展示的悬停提示
     QString m_message;             // 最近一次状态提示（读取失败等原因）
+    QString m_tipNote;             // 双击打开桌面版失败时的临时提示
+    QTimer m_tipNoteTimer;         // 临时提示自动清除
 };
 
 #endif // CODEXMONITORPLUGIN_H

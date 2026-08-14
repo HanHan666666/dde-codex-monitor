@@ -6,6 +6,7 @@
 
 #include "codexappserverclient.h"
 
+#include <QTimer>
 #include <QWidget>
 
 /**
@@ -49,14 +50,18 @@ public:
 
 signals:
     void refreshRequested();
+    void launchRequested();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 private:
     QuotaState m_quota;
     CodexClientState m_state = CodexClientState::Starting;
+    // 单击延迟到双击间隔结束后生效，双击则取消刷新改为打开桌面版
+    QTimer m_singleClickTimer;
 };
 
 /**

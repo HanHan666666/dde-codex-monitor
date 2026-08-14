@@ -26,10 +26,11 @@
 
 - **托盘状态图标**：灰色底环 + 彩色圆弧表示已用比例，中间字母 `C`；
   绿色=正常，橙色=接近上限（≥70%），红色=即将耗尽（≥90%），灰色=无数据/读取失败。
-- **快捷面板额度卡片**：套餐类型（如 Plus）、已用百分比、额度周期（5 小时 / 7 天，以服务端为准）、恢复倒计时。
+- **快捷面板额度卡片**：套餐类型（如 Plus）、剩余百分比、额度周期（5 小时 / 7 天，以服务端为准）、恢复倒计时。
 - **双额度窗口**：同时存在 5 小时与 7 天窗口时逐行展示，以最接近上限的窗口决定图标状态。
 - **自动刷新**：启动读取一次、每 5 分钟刷新、收到服务端额度变化通知立即更新、倒计时本地更新不发网络请求。
-- **手动刷新**：点击托盘图标或额度卡片立即重新读取（图标短暂变灰提示）。
+- **手动刷新**：单击托盘图标或点击额度卡片立即重新读取（图标短暂变灰提示）。
+- **双击打开桌面版**：双击托盘图标启动 [Codex 桌面版](#-双击打开-codex-桌面版)（官方 Linux 版 ChatGPT 应用，内含 Codex）。
 - **异常状态提示**：区分"正在读取 / 未找到 Codex CLI / 未登录 / 读取失败 / 无可用额度"。
 - **亮暗主题自适应**：不使用固定背景色，文本颜色跟随系统调色板。
 
@@ -41,6 +42,7 @@
 - 编译：CMake ≥ 3.16、C++17、Qt6（Core / Gui / Widgets）
 - 依赖开发包：`dde-tray-loader-dev`、`qt6-base-dev`
 - 运行时：本机已安装 [Codex CLI](https://github.com/openai/codex) 并用 ChatGPT 账号登录
+- 可选：[Codex 桌面版](https://learn.chatgpt.com/docs/linux/linux-app)（双击托盘图标打开，未安装不影响额度监控）
 
 ## 🔨 构建与安装
 
@@ -49,11 +51,20 @@ sudo apt install build-essential cmake qt6-base-dev dde-tray-loader-dev
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
-sudo cmake --install build --prefix /usr
-# 或打包安装：
-dpkg-deb --build --root-owner-group <deb目录>
-sudo dpkg -i dde-codex-monitor.deb
 ```
+
+> Deepin 25 的 `/usr` 是只读的，`sudo cmake --install` 会报
+> `Read-only file system`；需要打包成 deb 走 apt（经 overlay 层写入）安装：
+
+```bash
+install -D build/libdde-codex-monitor.so \
+  packaging/dde-codex-monitor/usr/lib/dde-dock/plugins/libdde-codex-monitor.so
+dpkg-deb --build --root-owner-group packaging/dde-codex-monitor
+sudo apt install -y packaging/dde-codex-monitor.deb
+```
+
+升级时记得先递增 `packaging/dde-codex-monitor/DEBIAN/control` 里的版本号，
+否则同版本号 apt 不会覆盖安装。
 
 安装后重启任务栏（或重新登录）生效：
 
@@ -65,6 +76,31 @@ systemctl --user restart dde-shell@DDE.service
 > [dde-tray-loader](https://github.com/linuxdeepin/dde-tray-loader) 仓库的
 > `interfaces/` 目录拉取接口头文件，通过 `-DDDE_TRAY_LOADER_INCLUDE_OVERRIDE=<头文件目录>`
 > 指定即可编译（也可直接让 AI 助手完成这一步）。
+
+## 🖱 双击打开 Codex 桌面版
+
+双击托盘图标会启动官方 **ChatGPT/Codex 桌面应用**（Linux 预览版，deb 包，来自
+[官方安装指南](https://learn.chatgpt.com/docs/linux/linux-app)）：
+
+```bash
+# 下载并安装官方 deb（Ubuntu/Debian 系，含 deepin 25）
+curl -fL -o /tmp/chatgpt_amd64.deb \
+  "https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb"
+sudo apt install -y /tmp/chatgpt_amd64.deb
+```
+
+安装后应用入口为 `chatgpt`（`/usr/share/applications/chatgpt.desktop`）。插件按
+XDG 规范查找 `chatgpt.desktop`，解析其中的 `Exec` 并脱离启动；找不到桌面版时，
+双击后鼠标悬停图标会短暂提示原因。
+
+查找顺序：
+
+1. 环境变量 `DDE_CODEX_MONITOR_DESKTOP_ENTRY` 指定的 desktop 文件（路径或文件名）
+2. `$XDG_DATA_HOME/applications/chatgpt.desktop`（默认 `~/.local/share/applications`）
+3. `XDG_DATA_DIRS` 各目录下的 `applications/chatgpt.desktop`（含 `/usr/share/applications`）
+
+> 单击刷新需要等待系统双击间隔（通常 400ms）后触发，用于区分单击与双击；
+> 快捷面板卡片仍是单击立即刷新。
 
 ## 📌 注册到快捷面板
 
@@ -113,10 +149,13 @@ sudo mkdir -p /etc/dsg/configs/overrides/org.deepin.ds.dock/org.deepin.ds.dock.t
 ```text
 .
 ├── CMakeLists.txt
+├── packaging
+│   └── dde-codex-monitor           # deb 打包目录（DEBIAN/control + usr/…）
 ├── src
 │   ├── codex-monitor.json          # 插件元数据 {"api": "2.0.0"}
 │   ├── codexmonitorplugin.*        # PluginsItemInterfaceV2 插件主体
 │   ├── codexappserverclient.*      # QProcess + JSONL：App Server 客户端
+│   ├── codexdesktoplauncher.*      # 查找并启动 Codex 桌面版（chatgpt.desktop）
 │   └── quotawidgets.*              # 托盘图标 / 快捷面板卡片（QPainter 绘制）
 └── docs/screenshots
 ```
