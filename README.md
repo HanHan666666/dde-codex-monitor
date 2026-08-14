@@ -21,6 +21,7 @@
 
 ![真实快捷面板](docs/screenshots/live-quick-panel.png)
 ![真实托盘图标](docs/screenshots/live-tray-icon.png)
+![真实详情页 - 48 小时额度曲线](docs/screenshots/live-detail-page.png)
 
 ## ✨ 功能特性
 
